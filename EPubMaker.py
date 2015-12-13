@@ -57,9 +57,6 @@ class EpubMakerEventListener(sublime_plugin.EventListener):
 	def on_post_save(self, view):
 		if not get_setting('auto_save'):
 			return
-		if get_setting('require_confirm_save'):
-			if not sublime.ok_cancel_dialog('변경된 내용을 ePub 파일에도 반영 하시겠습니까?'):
-				return
 		view.run_command(SAVE_COMMAND) # epub 저장
 
 ###
@@ -126,7 +123,7 @@ class EpubMakerOpenCommand(sublime_plugin.TextCommand):
 		close_folders(workpath)
 		if not os.path.exists(workpath):
 			extract(workpath, namelist)
-		elif not sublime.ok_cancel_dialog('이전에 작업하던 파일입니다.\n이어서 작업하시겠습니까?'):
+		elif not sublime.ok_cancel_dialog('이전에 작업하던 ePub입니다.\n이어서 작업하시겠습니까?'):
 			shutil.rmtree(workpath)
 			extract(workpath, namelist)
 
@@ -157,7 +154,70 @@ class EpubMakerOpenCommand(sublime_plugin.TextCommand):
 		print(PACKAGE_NAME + ':open: \'' + epubpath + '\' -> \'' + workpath + '\'')
 
 class EpubMakerSaveCommand(sublime_plugin.TextCommand):
-	pass
+	def run(self, edit):
+		global WORKSPACES_PATH
+		if not self.view.file_name().startswith(WORKSPACES_PATH): # epub과 관련된 파일이 아닐 때는 저장 무시
+			return
+
+		# epub-identifier 찾기
+		filename = self.view.file_name()
+		components = filename.replace(WORKSPACES_PATH, '').split(os.sep)
+		if not len(components[0]) == 0:
+			return
+		workpath = os.path.join(WORKSPACES_PATH, components[1])
+		if not os.path.exists(workpath):
+			return
+		if not os.path.isdir(workpath):
+			return
+		idpath = get_epub_identifier_path(workpath)
+		if not os.path.exists(idpath):
+			sublime.error_message('\'' + idpath + '\'를 찾을 수 없습니다')
+			print(PACKAGE_NAME + ':save: \'' + idpath + '\'를 찾을 수 없습니다')
+			return
+
+		if get_setting('require_confirm_save'):
+			if not sublime.ok_cancel_dialog('변경된 내용을 ePub에도 반영 하시겠습니까?'):
+				return
+
+		# epub-identifier 읽기
+		idfile = open(idpath, 'r')
+		epubid = json.loads(idfile.read())
+		idfile.close()
+
+		epubpath = None
+		if get_setting('overwite_original'):
+			epubpath = epubid['src_path']
+			if not epubpath is None and get_setting('backup_original'):
+				def backup(path):
+					try:
+						shutil.copy(path, path + '.' + get_setting('backup_extension'))
+					except Exception as e:
+						sublime.error_message('\'' + epubpath + '\'을 백업하는 중 오류가 발생했습니다')
+						print(PACKAGE_NAME + ':save: \'' + epubpath + '\'을 백업하는 중 오류가 발생했습니다')
+				backup(epubpath)
+		if epubpath is None:
+			epubpath = os.path.join(workpath, '..', os.path.basename(workpath)) + '.epub'
+
+		epub = zipfile.ZipFile(epubpath, 'w')
+
+		# ePub OCF에 따라 mimetype을 제일 먼저 압축없이 압축파일에 포함
+		epub.writestr('mimetype', 'application/epub+zip', zipfile.ZIP_STORED)
+
+		# 이후 디렉토리와 파일을 추가
+		for root, dirs, files in os.walk(workpath):
+			if root == workpath:
+				continue
+			epub.write(root, root[len(workpath + os.sep):], zipfile.ZIP_STORED)
+			for f in files:
+				if is_ignore_file(f) or f == 'mimetype':
+					continue
+				f = os.path.join(root, f)
+				epub.write(f, f[len(workpath + os.sep):], zipfile.ZIP_DEFLATED)
+
+		epub.close()
+
+		sublime.status_message('Saved ePub ' + epubpath)
+		print(PACKAGE_NAME + ':save: \'' + epubpath + '\'')
 
 ###
 ### Global Def (utility)
