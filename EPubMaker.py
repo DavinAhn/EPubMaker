@@ -17,7 +17,8 @@ import json
 PACKAGE_NAME		= 'EPubMaker'
 
 OPEN_COMMAND		= 'epub_maker_open'
-SAVE_COMMAND		= 'epub_maker_save'	
+SAVE_COMMAND		= 'epub_maker_save'
+PREVIEW_COMMAND		= 'epub_maker_preview'
 
 WORKSPACES_PATH = None
 
@@ -31,6 +32,8 @@ IGNORE_EXTENSIONS = [
 	PROJECT_EXTENSION, 
 	'sublime-workspace'
 ]
+
+PREVIEW_PREFIX			= 'epub-preview-'
 
 SETTINGS = {}
 
@@ -155,20 +158,11 @@ class EpubMakerOpenCommand(sublime_plugin.TextCommand):
 
 class EpubMakerSaveCommand(sublime_plugin.TextCommand):
 	def run(self, edit):
-		global WORKSPACES_PATH
-		if not self.view.file_name().startswith(WORKSPACES_PATH): # epub과 관련된 파일이 아닐 때는 저장 무시
+		workpath = get_work_path(self.view)
+		if workpath is None:
 			return
 
 		# epub-identifier 찾기
-		filename = self.view.file_name()
-		components = filename.replace(WORKSPACES_PATH, '').split(os.sep)
-		if not len(components[0]) == 0:
-			return
-		workpath = os.path.join(WORKSPACES_PATH, components[1])
-		if not os.path.exists(workpath):
-			return
-		if not os.path.isdir(workpath):
-			return
 		idpath = get_epub_identifier_path(workpath)
 		if not os.path.exists(idpath):
 			sublime.error_message('\'' + idpath + '\'를 찾을 수 없습니다')
@@ -190,13 +184,13 @@ class EpubMakerSaveCommand(sublime_plugin.TextCommand):
 			if not epubpath is None and get_setting('backup_original'):
 				def backup(path):
 					try:
-						shutil.copy(path, path + '.' + get_setting('backup_extension'))
+						shutil.copy(path, set_extension(path, get_setting('backup_extension')))
 					except Exception as e:
 						sublime.error_message('\'' + epubpath + '\'을 백업하는 중 오류가 발생했습니다')
 						print(PACKAGE_NAME + ':save: \'' + epubpath + '\'을 백업하는 중 오류가 발생했습니다')
 				backup(epubpath)
 		if epubpath is None:
-			epubpath = os.path.join(workpath, '..', os.path.basename(workpath)) + '.epub'
+			epubpath = set_extension(os.path.join(workpath, '..', os.path.basename(workpath)), 'epub')
 
 		epub = zipfile.ZipFile(epubpath, 'w')
 
@@ -209,7 +203,7 @@ class EpubMakerSaveCommand(sublime_plugin.TextCommand):
 				continue
 			epub.write(root, root[len(workpath + os.sep):], zipfile.ZIP_STORED)
 			for f in files:
-				if is_ignore_file(f) or f == 'mimetype':
+				if is_ignore_file(f) or f == 'mimetype' or f.startswith(PREVIEW_PREFIX):
 					continue
 				f = os.path.join(root, f)
 				epub.write(f, f[len(workpath + os.sep):], zipfile.ZIP_DEFLATED)
@@ -218,6 +212,31 @@ class EpubMakerSaveCommand(sublime_plugin.TextCommand):
 
 		sublime.status_message('Saved ePub ' + epubpath)
 		print(PACKAGE_NAME + ':save: \'' + epubpath + '\'')
+
+class EpubMakerPreviewCommand(sublime_plugin.TextCommand):
+	def run(self, edit):
+		workpath = get_work_path(self.view)
+		if workpath is None:
+			return
+
+		filename = self.view.file_name()
+		if not is_valid_format(filename, ['html', 'htm', 'xhtml', 'xhtm']):
+			return
+
+		previewfile = open(os.path.join(sublime.packages_path(), PACKAGE_NAME, 'preview.html'), 'r')
+		preview = previewfile.read()
+		previewfile.close()
+
+		preview = preview.replace('#EPUB_NAME#', os.path.basename(workpath))
+		preview = preview.replace('#EPUB_SPINE_NAME#', os.path.basename(filename))
+		preview = preview.replace('#EPUB_SPINE_PATH#', filename.replace(workpath + os.sep, ''))
+
+		previewpath = get_preview_path(workpath)
+		with codecs.open(previewpath, 'w', 'utf-8') as html:
+			html.write(preview)
+			html.close()
+
+		sublime.active_window().run_command('side_bar_open_in_browser', {'browser': 'chromium', 'paths': [previewpath], 'type': 'testing'})
 
 ###
 ### Global Def (utility)
@@ -332,6 +351,24 @@ def create_epub_summary(workpath, epubpath):
 def get_epub_summary_path(workpath):
 	return set_extension(os.path.join(workpath, os.path.basename(workpath)), SUMMARY_EXTENSION)
 
+def get_preview_path(workpath):
+	return set_extension(os.path.join(workpath, PREVIEW_PREFIX + os.path.basename(workpath)), 'html')
+
+def get_work_path(view):
+	global WORKSPACES_PATH
+	filename = view.file_name()
+	if not filename.startswith(WORKSPACES_PATH):
+		return None
+	components = filename.replace(WORKSPACES_PATH, '').split(os.sep)
+	if not len(components[0]) == 0:
+		return None
+	workpath = os.path.join(WORKSPACES_PATH, components[1])
+	if not os.path.exists(workpath):
+		return None
+	if not os.path.isdir(workpath):
+		return None
+	return workpath
+
 def get_platform_name():
 	return sublime.platform()
 
@@ -362,6 +399,22 @@ def init_menu():
 							"caption": "Save As ePub",
 							"mnemonic": "e",
 							"command": SAVE_COMMAND
+						}
+					]
+				},
+				{
+					"caption": "View",
+					"mnemonic": "v",
+					"id": "view",
+					"children":
+					[
+						{
+							"caption": "Preview ePub",
+							"mnemonic": "p",
+							"command": PREVIEW_COMMAND
+						},
+						{
+							"caption": "-"
 						}
 					]
 				},
@@ -414,7 +467,8 @@ def init_keymap():
 	else:
 		with codecs.open(windowkeymappath, 'w', 'utf-8') as keymap:
 			keymap.write(json.dumps([
-				{"keys": ["shift+e"], "command": SAVE_COMMAND}
+				{"keys": ["ctrl+shift+e"], "command": SAVE_COMMAND},
+				{"keys": ["f5"], "command": PREVIEW_COMMAND}
 			], sort_keys=True, indent=4, separators=(',', ': ')))
 			keymap.close()
 	osxkeymappath = os.path.join(sublime.packages_path(), PACKAGE_NAME, 'Default (OSX).sublime-keymap')
@@ -423,7 +477,8 @@ def init_keymap():
 	else:
 		with codecs.open(osxkeymappath, 'w', 'utf-8') as keymap:
 			keymap.write(json.dumps([
-				{"keys": ["super+shift+e"], "command": SAVE_COMMAND}
+				{"keys": ["super+shift+e"], "command": SAVE_COMMAND},
+				{"keys": ["f5"], "command": PREVIEW_COMMAND}
 			], sort_keys=True, indent=4, separators=(',', ': ')))
 			keymap.close()
 
@@ -446,5 +501,6 @@ def plugin_loaded():
 	if not is_windows and not is_osx:
 		return
 	init_menu()
+	init_keymap()
 	init_settings()
 	init_workspaces()
