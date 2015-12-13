@@ -122,7 +122,7 @@ class EpubMakerOpenCommand(sublime_plugin.TextCommand):
 		global WORKSPACES_PATH
 		workpath = os.path.join(WORKSPACES_PATH, os.path.splitext(os.path.basename(epubpath))[0])
 		namelist = epub.namelist()
-		close_views(workpath, namelist + [get_sumblime_project_path(workpath), get_epub_identifier_path(workpath), get_epub_summary_path(workpath)])
+		close_views(workpath, namelist + [get_sumblime_project_path(workpath), get_epub_identifier_path(workpath), get_epub_summary_path(workpath), get_preview_path(workpath)])
 		close_folders(workpath)
 		if not os.path.exists(workpath):
 			extract(workpath, namelist)
@@ -223,7 +223,7 @@ class EpubMakerPreviewCommand(sublime_plugin.TextCommand):
 		if not is_valid_format(filename, ['html', 'htm', 'xhtml', 'xhtm']):
 			return
 
-		previewfile = open(os.path.join(sublime.packages_path(), PACKAGE_NAME, 'preview.html'), 'r')
+		previewfile = open(get_resource_path('preview.html'), 'r')
 		preview = previewfile.read()
 		previewfile.close()
 
@@ -354,6 +354,9 @@ def get_epub_summary_path(workpath):
 def get_preview_path(workpath):
 	return set_extension(os.path.join(workpath, PREVIEW_PREFIX + os.path.basename(workpath)), 'html')
 
+def get_resource_path(subpath):
+	return os.path.join(sublime.packages_path(), PACKAGE_NAME, subpath);
+
 def get_work_path(view):
 	global WORKSPACES_PATH
 	filename = view.file_name()
@@ -383,7 +386,7 @@ def is_osx():
 ###
 
 def init_menu():
-	menupath = os.path.join(sublime.packages_path(), PACKAGE_NAME, 'Main.sublime-menu')
+	menupath = get_resource_path('Main.sublime-menu')
 	if os.path.exists(menupath):
 		return
 	else:
@@ -391,7 +394,6 @@ def init_menu():
 			menu.write(json.dumps([
 				{
 					"caption": "File",
-					"mnemonic": "f",
 					"id": "file",
 					"children":
 					[
@@ -404,13 +406,11 @@ def init_menu():
 				},
 				{
 					"caption": "View",
-					"mnemonic": "v",
 					"id": "view",
 					"children":
 					[
 						{
-							"caption": "Preview ePub",
-							"mnemonic": "p",
+							"caption": "Preview Current Spine In ePub",
 							"command": PREVIEW_COMMAND
 						},
 						{
@@ -461,7 +461,7 @@ def init_menu():
 			menu.close()
 
 def init_keymap():
-	windowkeymappath = os.path.join(sublime.packages_path(), PACKAGE_NAME, 'Default (Windows).sublime-keymap')
+	windowkeymappath = get_resource_path('Default (Windows).sublime-keymap')
 	if os.path.exists(windowkeymappath):
 		return
 	else:
@@ -471,7 +471,7 @@ def init_keymap():
 				{"keys": ["f5"], "command": PREVIEW_COMMAND}
 			], sort_keys=True, indent=4, separators=(',', ': ')))
 			keymap.close()
-	osxkeymappath = os.path.join(sublime.packages_path(), PACKAGE_NAME, 'Default (OSX).sublime-keymap')
+	osxkeymappath = get_resource_path('Default (OSX).sublime-keymap')
 	if os.path.exists(osxkeymappath):
 		return
 	else:
