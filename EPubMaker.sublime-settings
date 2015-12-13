@@ -1,0 +1,23 @@
+{
+	// 새로운 윈도우로 ePub 열기
+	"new_window": false,
+
+    // ePub에 속한 파일을 저장할 때 ePub도 저장하도록
+    // (true로 설정 시 Sigil처럼 저장할 때마다 재압축 과정을 진행)
+    "auto_save": false,
+
+    // ePub에 속한 파일을 저장할 때 ePub도 저장을 진행 할지를 묻도록
+    // (auto_save가 true일 때만)
+    "require_confirm_save": false,
+
+    // ePub을 저장 때 원본 ePub을 덮어쓰기 할지
+    // (false일 때는 workspaces에 저장함)
+    "overwite_original": true,
+
+    // 원본 ePub에 대한 백업 파일을 생성할지
+    // (overwite_original이 true일 때만)
+    "backup_original": false,
+
+    // 백업 파일 확장자
+    "backup_extension": "back"
+}

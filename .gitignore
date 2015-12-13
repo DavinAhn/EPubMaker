@@ -1,0 +1,3 @@
+# 코드로 생성하기 때문에 제외
+*.sublime-keymap
+*.sublime-menu
