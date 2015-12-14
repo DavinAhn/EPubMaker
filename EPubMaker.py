@@ -9,6 +9,7 @@ import glob
 import sys
 import codecs
 import json
+import xml.etree.ElementTree
 
 ###
 ### Global Value
@@ -242,6 +243,15 @@ class EpubMakerPreviewCommand(sublime_plugin.TextCommand):
 ### Global Def (utility)
 ###
 
+def get_platform_name():
+	return sublime.platform()
+
+def is_windows():
+	return get_platform_name().startswith('windows')
+
+def is_osx():
+	return get_platform_name().startswith('osx')
+
 def set_extension(path=None, extension=None):
 	if path is None or extension is None:
 		return None
@@ -343,6 +353,8 @@ def create_epub_summary(workpath, epubpath):
 			summary.write(os.path.basename(workpath) + '\n\n')
 			summary.write('원본 경로: ' + epubpath + ' (' + size_of(epubpath) + ')\n')
 			summary.write('작업 경로: ' + workpath + ' (' + size_of(workpath) + ')\n\n')
+			summary.write('OPF 경로: ' + (get_opf_path(workpath) or 'null') + '\n')
+			summary.write('OEBPS 경로: ' + (get_oebps_path(workpath) or 'null') + '\n\n')
 			summary.write('ePub 구조:\n')
 			summary.write(list_files(workpath))
 			summary.close()
@@ -372,14 +384,31 @@ def get_work_path(view):
 		return None
 	return workpath
 
-def get_platform_name():
-	return sublime.platform()
+def get_container_path(workpath):
+	path = os.path.join(workpath, 'META-INF', 'container.xml')
+	if os.path.exists(path):
+		return path
+	else:
+		return None
 
-def is_windows():
-	return get_platform_name().startswith('windows')
+def get_opf_path(workpath):
+	containerpath = get_container_path(workpath)
+	if containerpath is None:
+		return None
+	root = xml.etree.ElementTree.parse(containerpath).getroot()
+	containerns = {'ns': 'urn:oasis:names:tc:opendocument:xmlns:container'}
+	rootfiles = root.findall('./ns:rootfiles/ns:rootfile', namespaces=containerns)
+	for rootfile in rootfiles:
+		mediatype = rootfile.get('media-type')
+		if mediatype == 'application/oebps-package+xml':
+			return os.path.join(workpath, rootfile.get('full-path'))
+	return None
 
-def is_osx():
-	return get_platform_name().startswith('osx')
+def get_oebps_path(workpath):
+	opfpath = get_opf_path(workpath)
+	if opfpath is None:
+		return None
+	return os.path.dirname(opfpath)
 
 ###
 ### Global Def (setup)
