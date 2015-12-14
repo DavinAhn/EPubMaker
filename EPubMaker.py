@@ -8,6 +8,7 @@ import zipfile
 import glob
 import sys
 import codecs
+import re
 import json
 import xml.etree.ElementTree
 
@@ -252,6 +253,11 @@ def is_windows():
 def is_osx():
 	return get_platform_name().startswith('osx')
 
+def natural_sort(l): 
+    convert = lambda text: int(text) if text.isdigit() else text.lower() 
+    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
+    return sorted(l, key = alphanum_key)
+
 def set_extension(path=None, extension=None):
 	if path is None or extension is None:
 		return None
@@ -339,7 +345,7 @@ def create_epub_summary(workpath, epubpath):
 			indent = ' ' * 4 * (level)
 			tree += '{0}{1}{2}\n'.format(indent, os.path.basename(root), os.sep)
 			subindent = ' ' * 4 * (level + 1)
-			for f in files:
+			for f in natural_sort(files):
 				if is_ignore_file(f):
 					continue
 				tree += '{0}{1} ({2})\n'.format(subindent, f, size_of(os.path.join(root, f)))
